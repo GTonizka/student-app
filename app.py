@@ -123,7 +123,7 @@ with tab2:
     st.header("📈 학교 전체 통계 및 다운로드")
     if not records_df.empty and '작성일시' in records_df.columns:
         st.subheader("📂 엑셀(CSV) 다운로드")
-        csv = records_df.to_csv(index=False, encoding='utf-8-sig')
+        csv = records_df.to_csv(index=False, encoding='cp949', errors='ignore')
         st.download_button(
             label="📊 전체 지도기록 엑셀 다운로드",
             data=csv,
@@ -142,3 +142,4 @@ with tab2:
             st.info("작성일시 데이터 형식이 맞지 않아 통계를 표시할 수 없습니다.")
     else:
         st.info("아직 등록된 전체 기록이 없어 통계 및 다운로드를 제공할 수 없습니다.")
+
