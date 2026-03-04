@@ -144,15 +144,25 @@ with tab2:
         
         st.divider()
         st.subheader("📅 월별 누적 지도 건수 그래프")
+       # (기존 코드) st.subheader("📅 월별 누적 지도 건수 그래프") 바로 아래부터 덮어쓰세요!
         try:
             stats_df = records_df.copy()
-            stats_df['월'] = pd.to_datetime(stats_df['작성일시']).dt.strftime('%Y년 %m월')
+            
+            # errors='coerce'를 추가하면 빈칸이나 이상한 글자를 만나도 에러를 내지 않고 무시(NaT)합니다.
+            stats_df['변환된일시'] = pd.to_datetime(stats_df['작성일시'], errors='coerce')
+            
+            # 무시된 데이터(비어있는 칸 등)는 빼고 정상적인 날짜만 남깁니다.
+            stats_df = stats_df.dropna(subset=['변환된일시'])
+            
+            # 'YYYY년 MM월' 형태로 추출
+            stats_df['월'] = stats_df['변환된일시'].dt.strftime('%Y년 %m월')
+            
             monthly_data = stats_df['월'].value_counts().sort_index()
+            
             if not monthly_data.empty:
                 st.bar_chart(monthly_data)
             else:
-                st.info("그래프를 그릴 데이터가 없습니다.")
-        except:
-            st.info("작성일시 데이터 형식이 맞지 않아 통계를 표시할 수 없습니다.")
-    else:
-        st.info("아직 등록된 전체 기록이 없어 통계 및 다운로드를 제공할 수 없습니다.")
+                st.info("그래프를 그릴 정상적인 날짜 데이터가 없습니다.")
+        except Exception as e:
+            st.info(f"통계 처리 중 오류가 발생했습니다: {e}")
+
