@@ -3,7 +3,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
-
+import io  #
 st.set_page_config(page_title="학생생활지도 관리시스템", layout="wide")
 
 # ==========================================
@@ -120,16 +120,26 @@ with tab1:
             st.warning("해당 이름의 학생을 찾을 수 없습니다.")
 
 with tab2:
+    # --- 탭 2: 통계 및 다운로드 ---
+with tab2:
     st.header("📈 학교 전체 통계 및 다운로드")
+    
     if not records_df.empty and '작성일시' in records_df.columns:
-        st.subheader("📂 엑셀(CSV) 다운로드")
-        csv = records_df.to_csv(index=False, encoding='cp949', errors='ignore')
+        st.subheader("📂 엑셀(.xlsx) 파일 다운로드")
+        
+        # 진짜 엑셀 파일로 변환하는 마법의 코드
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            records_df.to_excel(writer, index=False, sheet_name='지도기록')
+        excel_data = output.getvalue()
+        
         st.download_button(
             label="📊 전체 지도기록 엑셀 다운로드",
-            data=csv,
-            file_name=f"학생지도기록_전체_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
+            data=excel_data,
+            file_name=f"학생지도기록_전체_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+        
         st.divider()
         st.subheader("📅 월별 누적 지도 건수 그래프")
         try:
@@ -142,4 +152,5 @@ with tab2:
             st.info("작성일시 데이터 형식이 맞지 않아 통계를 표시할 수 없습니다.")
     else:
         st.info("아직 등록된 전체 기록이 없어 통계 및 다운로드를 제공할 수 없습니다.")
+
 
