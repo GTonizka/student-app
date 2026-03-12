@@ -30,7 +30,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ==========================================
-# 🔓 로그인 성공 후 화면 (에러 감지기 작동 중)
+# 🔓 로그인 성공 후 화면
 # ==========================================
 try:
     import gspread
@@ -84,25 +84,30 @@ try:
                     student_records = pd.DataFrame()
 
                 st.subheader("📌 학생 지도 현황")
-                c1, c2, c3, c4 = st.columns(4)
+                c1, c2, c3, c4, c5 = st.columns(5)
                 if not student_records.empty:
                     c1.metric("외출(공식)", len(student_records[student_records['분류'] == '외출증 사용(공식)']))
                     c2.metric("외출(포상)", len(student_records[student_records['분류'] == '외출증 사용(포상)']))
                     c3.metric("무단 외출", len(student_records[student_records['분류'] == '무단 외출 적발']))
                     c4.metric("흡연(교내/외)", len(student_records[student_records['분류'].str.contains('흡연', na=False)]))
+                    c5.metric("🚨 교권 침해", len(student_records[student_records['분류'].str.contains('교권', na=False)]))
                 else:
-                    for c, title in zip([c1, c2, c3, c4], ["외출(공식)", "외출(포상)", "무단 외출", "흡연(교내/외)"]): 
+                    for c, title in zip([c1, c2, c3, c4, c5], ["외출(공식)", "외출(포상)", "무단 외출", "흡연(교내/외)", "🚨 교권 침해"]): 
                         c.metric(title, 0)
 
                 st.divider()
                 
                 st.subheader("📝 신규 지도 내용 작성")
-                category = st.radio("기록 종류 선택", ["일반 지도", "생활교육위원회 징계"], horizontal=True)
+                category = st.radio("기록 종류 선택", ["일반 지도", "교권 침해", "생활교육위원회 징계"], horizontal=True)
                 
                 with st.form("input_form", clear_on_submit=True):
                     if category == "일반 지도":
-                        rtype = st.selectbox("항목", ["외출증 사용(공식)", "외출증 사용(포상)", "무단 외출 적발", "교외 흡연 적발", "교내 흡연 적발"])
+                        # ★ 수정됨: 맨 끝에 '기타' 항목 추가
+                        rtype = st.selectbox("항목", ["외출증 사용(공식)", "외출증 사용(포상)", "무단 외출 적발", "교외 흡연 적발", "교내 흡연 적발", "기타"])
                         content = st.text_area("상세 내용")
+                    elif category == "교권 침해":
+                        rtype = st.selectbox("항목", ["교권침해(수업 방해)", "교권침해(폭언 및 욕설)", "교권침해(정당한 지도 불응)", "교권침해(기타)"])
+                        content = st.text_area("사안 상세 내용 (육하원칙에 의거하여 작성)")
                     else:
                         level = st.selectbox("징계 단계", ["교내봉사", "사회봉사", "특별교육", "출석정지(5일)", "출석정지(10일)", "퇴학"])
                         rtype = "생활교육위원회 징계"
@@ -201,6 +206,5 @@ try:
             st.info("아직 등록된 전체 기록이 없어 통계 및 다운로드를 제공할 수 없습니다.")
 
 except Exception as e:
-    # 에러가 나면 화면에 빨간 상자로 에러 내용을 띄워줍니다!
     st.error("🚨 치명적인 에러가 발생하여 화면이 멈췄습니다! 범인은 바로 아래에 있습니다.")
     st.code(traceback.format_exc())
