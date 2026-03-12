@@ -134,7 +134,7 @@ try:
             else:
                 st.warning("해당 이름의 학생을 찾을 수 없습니다.")
 
-    # --- ★ 탭 2: 학급별 명렬표 (수정된 부분) ---
+    # --- ★ 탭 2: 학급별 명렬표 ---
     with tab2:
         st.header("📋 학급별 명렬표 및 세부 현황")
         
@@ -160,23 +160,36 @@ try:
                 
                 st.success(f"✅ {selected_grade}학년 {selected_class}반 (총 {len(class_df)}명)")
                 
-                # ★ 단순 표 대신, 학생별로 클릭하면 열리는 아코디언 메뉴 생성
                 for index, row in class_df.iterrows():
                     student_name = row['이름']
                     
-                    # 아코디언 메뉴 (클릭하면 아래 내용이 펼쳐짐)
-                    with st.expander(f"🧑‍🎓 {row['번호']}번 {student_name} (상태: {row['학적상태']})"):
+                    # 1. 기록 먼저 확인하기
+                    if not records_df.empty and '이름' in records_df.columns:
+                        s_records = records_df[records_df['이름'] == student_name]
+                    else:
+                        s_records = pd.DataFrame()
                         
-                        # 이 학생의 기록만 쏙 뽑아오기
-                        if not records_df.empty and '이름' in records_df.columns:
-                            s_records = records_df[records_df['이름'] == student_name]
-                        else:
-                            s_records = pd.DataFrame()
-
+                    # 2. 기록 유무에 따라 아코디언 제목을 눈에 띄게 변경
+                    if s_records.empty:
+                        expander_title = f"⬜ {row['번호']}번 {student_name} (상태: {row['학적상태']})"
+                    else:
+                        expander_title = f"💖 [기록 있음] {row['번호']}번 {student_name} (상태: {row['학적상태']})"
+                    
+                    # 아코디언 메뉴 생성
+                    with st.expander(expander_title):
                         if s_records.empty:
                             st.info("이 학생에 대한 지도 기록이 없습니다.")
                         else:
-                            # 1. 요약 통계 보여주기
+                            # ★ 연한 핑크색 하이라이트 배경 추가
+                            st.markdown(
+                                """
+                                <div style='background-color: #FFF0F5; padding: 15px; border-radius: 8px; border-left: 5px solid #FF69B4; margin-bottom: 15px;'>
+                                    <span style='color: #C71585; font-weight: bold;'>📌 이 학생은 누적된 생활지도 기록이 있습니다. 아래 현황을 확인해 주세요.</span>
+                                </div>
+                                """, 
+                                unsafe_allow_html=True
+                            )
+                            
                             c1, c2, c3 = st.columns(3)
                             
                             cnt_gyogwon = len(s_records[s_records['분류'].str.contains('교권', na=False)])
@@ -187,9 +200,8 @@ try:
                             c2.metric("🚨 교권 침해", cnt_gyogwon)
                             c3.metric("⚖️ 위원회 징계", cnt_jinggye)
                             
-                            # 2. 세부 기록 내역 표 보여주기
                             st.markdown("**🔍 상세 기록 내역**")
-                            display_records = s_records.drop(columns=['이름'], errors='ignore') # 이미 본인 창이므로 이름 열은 숨김
+                            display_records = s_records.drop(columns=['이름'], errors='ignore')
                             st.dataframe(display_records.sort_values('작성일시', ascending=False), use_container_width=True, hide_index=True)
             else:
                 st.info("해당 학급에 등록된 학생이 없습니다.")
