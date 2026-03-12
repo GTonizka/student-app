@@ -102,7 +102,6 @@ try:
                 
                 with st.form("input_form", clear_on_submit=True):
                     if category == "일반 지도":
-                        # ★ 수정됨: 맨 끝에 '기타' 항목 추가
                         rtype = st.selectbox("항목", ["외출증 사용(공식)", "외출증 사용(포상)", "무단 외출 적발", "교외 흡연 적발", "교내 흡연 적발", "기타"])
                         content = st.text_area("상세 내용")
                     elif category == "교권 침해":
@@ -135,9 +134,9 @@ try:
             else:
                 st.warning("해당 이름의 학생을 찾을 수 없습니다.")
 
-    # --- 탭 2: 학급별 명렬표 ---
+    # --- ★ 탭 2: 학급별 명렬표 (수정된 부분) ---
     with tab2:
-        st.header("📋 학급별 명렬표")
+        st.header("📋 학급별 명렬표 및 세부 현황")
         
         if not students_df.empty and '학년' in students_df.columns and '반' in students_df.columns:
             col_g, col_c = st.columns(2)
@@ -161,8 +160,37 @@ try:
                 
                 st.success(f"✅ {selected_grade}학년 {selected_class}반 (총 {len(class_df)}명)")
                 
-                display_df = class_df[['번호', '이름', '학적상태']].copy()
-                st.dataframe(display_df, use_container_width=True, hide_index=True)
+                # ★ 단순 표 대신, 학생별로 클릭하면 열리는 아코디언 메뉴 생성
+                for index, row in class_df.iterrows():
+                    student_name = row['이름']
+                    
+                    # 아코디언 메뉴 (클릭하면 아래 내용이 펼쳐짐)
+                    with st.expander(f"🧑‍🎓 {row['번호']}번 {student_name} (상태: {row['학적상태']})"):
+                        
+                        # 이 학생의 기록만 쏙 뽑아오기
+                        if not records_df.empty and '이름' in records_df.columns:
+                            s_records = records_df[records_df['이름'] == student_name]
+                        else:
+                            s_records = pd.DataFrame()
+
+                        if s_records.empty:
+                            st.info("이 학생에 대한 지도 기록이 없습니다.")
+                        else:
+                            # 1. 요약 통계 보여주기
+                            c1, c2, c3 = st.columns(3)
+                            
+                            cnt_gyogwon = len(s_records[s_records['분류'].str.contains('교권', na=False)])
+                            cnt_jinggye = len(s_records[s_records['분류'] == '생활교육위원회 징계'])
+                            cnt_normal = len(s_records) - cnt_gyogwon - cnt_jinggye
+                            
+                            c1.metric("📝 일반 지도", cnt_normal)
+                            c2.metric("🚨 교권 침해", cnt_gyogwon)
+                            c3.metric("⚖️ 위원회 징계", cnt_jinggye)
+                            
+                            # 2. 세부 기록 내역 표 보여주기
+                            st.markdown("**🔍 상세 기록 내역**")
+                            display_records = s_records.drop(columns=['이름'], errors='ignore') # 이미 본인 창이므로 이름 열은 숨김
+                            st.dataframe(display_records.sort_values('작성일시', ascending=False), use_container_width=True, hide_index=True)
             else:
                 st.info("해당 학급에 등록된 학생이 없습니다.")
         else:
