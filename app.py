@@ -139,7 +139,7 @@ try:
                 st.warning("해당 이름의 학생을 찾을 수 없습니다.")
 
     # ==========================================
-    # --- ★ 탭 2: 출결 관리 (명단 출력/빠른 입력) ---
+    # --- 탭 2: 출결 관리 (명단 출력/빠른 입력) ---
     # ==========================================
     with tab_att:
         st.subheader("⏰ 학급별 출석부 빠른 입력")
@@ -166,26 +166,22 @@ try:
                 
                 st.info("💡 위쪽에 **작성자**와 **날짜**를 한 번만 적어두시고, 아래 명단에서 **출결 특이사항이 있는 학생만 바로 [저장]**을 누르세요!")
                 
-                # 공통 정보 입력칸 (한 번만 입력하면 됨)
                 c_top1, c_top2 = st.columns(2)
                 global_aut = c_top1.text_input("👨‍🏫 작성자(담임/교사명)", key="g_aut")
                 global_date = c_top2.date_input("📅 출결 해당 일자", datetime.now().date(), key="g_date")
                 
                 st.markdown("### 📋 출석부 명단")
                 
-                # 표 제목 부분
                 hc1, hc2, hc3, hc4 = st.columns([1.5, 3, 4, 1.5])
                 hc1.markdown("**이름**")
                 hc2.markdown("**출결 항목**")
                 hc3.markdown("**사유**")
                 hc4.markdown("**기록**")
                 
-                # 번호순으로 전체 학생 폼 생성
                 for index, row in a_df.iterrows():
                     s_name = row['이름']
                     s_num = row['번호']
                     
-                    # 학생 한 명당 하나의 폼을 만들어서 독립적으로 전송되게 함
                     with st.form(key=f"att_form_{a_sel_grade}_{a_sel_class}_{s_num}_{s_name}", clear_on_submit=True):
                         c1, c2, c3, c4 = st.columns([1.5, 3, 4, 1.5])
                         
@@ -207,7 +203,6 @@ try:
                             else:
                                 sel_dt_a = datetime.combine(global_date, datetime.now().time()).strftime("%Y-%m-%d %H:%M:%S")
                                 record_sheet.append_row([s_name, a_type, a_content, "출결처리", global_aut, sel_dt_a])
-                                # st.rerun()을 빼서 여러 명을 연속으로 빠르게 저장할 수 있게 함!
                                 st.success(f"✅ {s_name} ({a_type}) 저장 완료!")
             else:
                 st.info("해당 학급에 등록된 학생이 없습니다.")
@@ -277,23 +272,23 @@ try:
                 st.info("해당 학급에 등록된 학생이 없습니다.")
 
     # ==========================================
-    # --- 탭 4: 분리형 통계 및 다운로드 ---
+    # --- ★ 탭 4: 통계 및 엑셀 다운로드 (자동 피벗 추가) ---
     # ==========================================
     with tab3:
         st.header("📈 학교 전체 통계 및 다운로드")
         
         if not records_df.empty and '작성일시' in records_df.columns:
-            st.subheader("📂 엑셀(.xlsx) 파일 다운로드")
+            st.subheader("📂 전체 원본 데이터 다운로드")
             
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                records_df.to_excel(writer, index=False, sheet_name='지도_및_출결기록')
-            excel_data = output.getvalue()
+            output_all = io.BytesIO()
+            with pd.ExcelWriter(output_all, engine='openpyxl') as writer:
+                records_df.to_excel(writer, index=False, sheet_name='전체기록_원본')
+            excel_data_all = output_all.getvalue()
             
             st.download_button(
-                label="📊 전체 기록 엑셀 다운로드",
-                data=excel_data,
-                file_name=f"학생통합기록_전체_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                label="📁 전체 기록 원본 엑셀 다운로드 (지도+출결)",
+                data=excel_data_all,
+                file_name=f"학생통합기록_원본_{datetime.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
             
@@ -306,11 +301,11 @@ try:
                 stats_df['월'] = stats_df['변환된일시'].dt.strftime('%Y년 %m월')
                 
                 mask_att = stats_df['분류'].str.contains('결석|조퇴|지각', na=False)
-                df_att = stats_df[mask_att]
+                df_att = stats_df[mask_att].copy()
                 df_guide = stats_df[~mask_att]
                 
+                # --- 차트 영역 ---
                 col_st1, col_st2 = st.columns(2)
-                
                 with col_st1:
                     st.markdown("### 📊 월별 **생활지도** 건수")
                     guide_mon = df_guide['월'].value_counts().sort_index()
@@ -326,6 +321,49 @@ try:
                         st.bar_chart(att_mon)
                     else:
                         st.info("출결 통계 데이터가 없습니다.")
+
+                st.divider()
+                
+                # --- ★ 새로운 기능: 월별/학급별/학생별 출결 자동 요약(피벗) ---
+                st.subheader("📑 월별 학급/학생 출결 요약 통계 (자동 계산)")
+                
+                if not df_att.empty and not students_df.empty:
+                    # 학생명부와 출결기록 병합 (학년, 반, 번호 가져오기)
+                    stu_info = students_df[['학년', '반', '번호', '이름']].copy()
+                    merged_att = pd.merge(df_att, stu_info, on='이름', how='left')
+                    
+                    # 피벗 테이블 생성 (자동으로 건수 세기)
+                    pivot_df = pd.pivot_table(
+                        merged_att, 
+                        index=['월', '학년', '반', '번호', '이름'], 
+                        columns='분류', 
+                        aggfunc='size', 
+                        fill_value=0
+                    ).reset_index()
+                    
+                    # 깔끔한 정렬을 위해 숫자 변환
+                    pivot_df['학년'] = pd.to_numeric(pivot_df['학년'], errors='coerce')
+                    pivot_df['반'] = pd.to_numeric(pivot_df['반'], errors='coerce')
+                    pivot_df['번호'] = pd.to_numeric(pivot_df['번호'], errors='coerce')
+                    pivot_df = pivot_df.sort_values(by=['월', '학년', '반', '번호'])
+                    
+                    # 화면에 미리보기 출력
+                    st.dataframe(pivot_df, use_container_width=True, hide_index=True)
+                    
+                    # 피벗 테이블 엑셀 다운로드
+                    output_att = io.BytesIO()
+                    with pd.ExcelWriter(output_att, engine='openpyxl') as writer:
+                        pivot_df.to_excel(writer, index=False, sheet_name='학생별_출결통계')
+                    excel_data_att = output_att.getvalue()
+                    
+                    st.download_button(
+                        label="📥 [자동계산] 월별/학생별 출결 통계표 엑셀 다운로드",
+                        data=excel_data_att,
+                        file_name=f"자동출결통계_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.info("아직 누적된 출결 기록이 없어 요약 통계를 생성할 수 없습니다.")
                         
             except Exception as e:
                 st.info(f"통계 처리 중 오류가 발생했습니다: {e}")
