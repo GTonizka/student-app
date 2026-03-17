@@ -65,7 +65,6 @@ try:
     students_df = get_data(student_sheet)
     records_df = get_data(record_sheet)
 
-    # ★ 탭을 4개로 명확하게 분리했습니다!
     tab1, tab_att, tab2, tab3 = st.tabs(["🔍 학생 지도", "⏰ 출결 관리", "📋 학급 명렬표", "📊 통계 및 다운로드"])
 
     # ==========================================
@@ -86,7 +85,6 @@ try:
                 else:
                     st_records = pd.DataFrame()
 
-                # 안전한 변수 쪼개기 (생활지도 전용)
                 if not st_records.empty:
                     c_o1 = len(st_records[st_records['분류'] == '외출증 사용(공식)'])
                     c_o2 = len(st_records[st_records['분류'] == '외출증 사용(포상)'])
@@ -141,65 +139,90 @@ try:
                 st.warning("해당 이름의 학생을 찾을 수 없습니다.")
 
     # ==========================================
-    # --- ★ 탭 2: 출결 관리 전용 탭 ---
+    # --- ★ 탭 2: 출결 관리 전용 탭 (명단 선택형) ---
     # ==========================================
     with tab_att:
-        search_att = st.text_input("출결을 기록할 학생 이름 검색", placeholder="이름 입력 후 엔터", key="a_search")
+        st.subheader("⏰ 학급별 출결 빠른 입력")
         
-        if search_att:
-            st_info_a = students_df[students_df['이름'] == search_att]
+        if not students_df.empty and '학년' in students_df.columns and '반' in students_df.columns:
+            col_ag, col_ac = st.columns(2)
             
-            if not st_info_a.empty:
-                info_a = st_info_a.iloc[0]
-                st.info(f"📍 {info_a['학년']}학년 {info_a['반']}반 {info_a['번호']}번 {info_a['이름']} (상태: {info_a['학적상태']})")
+            with col_ag:
+                a_grades = sorted(students_df['학년'].astype(str).unique())
+                a_sel_grade = st.selectbox("출결 - 학년 선택", a_grades, key="ag")
                 
-                if not records_df.empty and '이름' in records_df.columns:
-                    st_records_a = records_df[records_df['이름'] == search_att]
-                else:
-                    st_records_a = pd.DataFrame()
-
-                # 안전한 변수 쪼개기 (출결 전용)
-                if not st_records_a.empty:
-                    c_si = len(st_records_a[st_records_a['분류'].str.contains('질병', na=False)])
-                    c_un = len(st_records_a[st_records_a['분류'].str.contains('미인정', na=False)])
-                    c_au = len(st_records_a[st_records_a['분류'].str.contains('출석인정', na=False)])
-                    c_et = len(st_records_a[st_records_a['분류'].str.contains('기타결석|기타조퇴|기타지각', na=False)])
-                else:
-                    c_si = c_un = c_au = c_et = 0
-
-                st.subheader("⏰ 학생 출결 현황")
-                a1, a2, a3, a4 = st.columns(4)
-                a1.metric("🤒 질병 (결/조/지)", c_si)
-                a2.metric("⚠️ 미인정 (결/조/지)", c_un)
-                a3.metric("✅ 출석인정 (결/조/지)", c_au)
-                a4.metric("기타 (결/조/지)", c_et)
-
-                st.divider()
-                st.subheader("📝 당일 출결 빠른 입력")
+            with col_ac:
+                a_classes_in = students_df[students_df['학년'].astype(str) == a_sel_grade]['반'].astype(str).unique()
+                a_classes = sorted(a_classes_in)
+                a_sel_class = st.selectbox("출결 - 반 선택", a_classes, key="ac")
                 
-                with st.form("att_form", clear_on_submit=True):
-                    a_type = st.selectbox("출결 항목 선택", [
-                        "출석인정결석", "출석인정조퇴", "출석인정지각", 
-                        "질병결석", "질병조퇴", "질병지각", 
-                        "미인정결석", "미인정조퇴", "미인정지각", 
-                        "기타결석", "기타조퇴", "기타지각"
-                    ])
-                    a_content = st.text_area("사유 (예: 감기몸살, 병원 진료 등)")
+            st.divider()
+            
+            # 선택한 학급 학생들 필터링 및 정렬
+            a_df = students_df[(students_df['학년'].astype(str) == a_sel_grade) & (students_df['반'].astype(str) == a_sel_class)].copy()
+            
+            if not a_df.empty:
+                a_df['번호_숫자'] = pd.to_numeric(a_df['번호'], errors='coerce')
+                a_df = a_df.sort_values('번호_숫자')
+                
+                # 명단 리스트 만들기
+                stu_list = [f"{row['번호']}번 {row['이름']}" for idx, row in a_df.iterrows()]
+                sel_stu_str = st.selectbox("👇 출결을 입력할 학생을 선택하세요", ["(학생을 선택해주세요)"] + stu_list)
+                
+                if sel_stu_str != "(학생을 선택해주세요)":
+                    # '1번 홍길동'에서 이름만 쏙 뽑아오기
+                    search_att = sel_stu_str.split(" ", 1)[1]
                     
-                    col_aa, col_ad = st.columns(2)
-                    a_aut = col_aa.text_input("작성자(담임/교사명)")
-                    a_date = col_ad.date_input("📅 출결 해당 일자", datetime.now().date(), key="ad")
+                    st_info_a = students_df[students_df['이름'] == search_att].iloc[0]
+                    st.info(f"📍 선택됨: {st_info_a['학년']}학년 {st_info_a['반']}반 {st_info_a['번호']}번 {st_info_a['이름']} (상태: {st_info_a['학적상태']})")
                     
-                    if st.form_submit_button("출결 기록하기"):
-                        if not a_aut:
-                            st.error("작성자 이름을 입력해주세요.")
-                        else:
-                            sel_dt_a = datetime.combine(a_date, datetime.now().time()).strftime("%Y-%m-%d %H:%M:%S")
-                            record_sheet.append_row([search_att, a_type, a_content, "출결처리", a_aut, sel_dt_a])
-                            st.success("출결 데이터가 안전하게 저장되었습니다.")
-                            st.rerun()
+                    if not records_df.empty and '이름' in records_df.columns:
+                        st_records_a = records_df[records_df['이름'] == search_att]
+                    else:
+                        st_records_a = pd.DataFrame()
+
+                    if not st_records_a.empty:
+                        c_si = len(st_records_a[st_records_a['분류'].str.contains('질병', na=False)])
+                        c_un = len(st_records_a[st_records_a['분류'].str.contains('미인정', na=False)])
+                        c_au = len(st_records_a[st_records_a['분류'].str.contains('출석인정', na=False)])
+                        c_et = len(st_records_a[st_records_a['분류'].str.contains('기타결석|기타조퇴|기타지각', na=False)])
+                    else:
+                        c_si = c_un = c_au = c_et = 0
+
+                    st.markdown("**📊 누적 출결 현황**")
+                    a1, a2, a3, a4 = st.columns(4)
+                    a1.metric("🤒 질병 (결/조/지)", c_si)
+                    a2.metric("⚠️ 미인정 (결/조/지)", c_un)
+                    a3.metric("✅ 출석인정 (결/조/지)", c_au)
+                    a4.metric("기타 (결/조/지)", c_et)
+
+                    st.divider()
+                    
+                    with st.form("att_form", clear_on_submit=True):
+                        a_type = st.selectbox("출결 항목 선택", [
+                            "출석인정결석", "출석인정조퇴", "출석인정지각", 
+                            "질병결석", "질병조퇴", "질병지각", 
+                            "미인정결석", "미인정조퇴", "미인정지각", 
+                            "기타결석", "기타조퇴", "기타지각"
+                        ])
+                        a_content = st.text_area("사유 (예: 감기몸살, 병원 진료 등)")
+                        
+                        col_aa, col_ad = st.columns(2)
+                        a_aut = col_aa.text_input("작성자(담임/교사명)")
+                        a_date = col_ad.date_input("📅 출결 해당 일자", datetime.now().date(), key="ad")
+                        
+                        if st.form_submit_button(f"[{search_att}] 출결 기록하기"):
+                            if not a_aut:
+                                st.error("작성자 이름을 입력해주세요.")
+                            else:
+                                sel_dt_a = datetime.combine(a_date, datetime.now().time()).strftime("%Y-%m-%d %H:%M:%S")
+                                record_sheet.append_row([search_att, a_type, a_content, "출결처리", a_aut, sel_dt_a])
+                                st.success("출결 데이터가 안전하게 저장되었습니다.")
+                                st.rerun()
             else:
-                st.warning("해당 이름의 학생을 찾을 수 없습니다.")
+                st.info("해당 학급에 등록된 학생이 없습니다.")
+        else:
+            st.warning("학생명부 데이터가 올바르게 구성되지 않았습니다.")
 
     # ==========================================
     # --- 탭 3: 학급별 명렬표 ---
@@ -264,7 +287,7 @@ try:
                 st.info("해당 학급에 등록된 학생이 없습니다.")
 
     # ==========================================
-    # --- ★ 탭 4: 분리형 통계 및 다운로드 ---
+    # --- 탭 4: 분리형 통계 및 다운로드 ---
     # ==========================================
     with tab3:
         st.header("📈 학교 전체 통계 및 다운로드")
@@ -292,12 +315,10 @@ try:
                 stats_df = stats_df.dropna(subset=['변환된일시'])
                 stats_df['월'] = stats_df['변환된일시'].dt.strftime('%Y년 %m월')
                 
-                # 지도와 출결 데이터 완벽 분리
                 mask_att = stats_df['분류'].str.contains('결석|조퇴|지각', na=False)
                 df_att = stats_df[mask_att]
                 df_guide = stats_df[~mask_att]
                 
-                # 2개의 기둥으로 통계 그래프 좌우 배치
                 col_st1, col_st2 = st.columns(2)
                 
                 with col_st1:
