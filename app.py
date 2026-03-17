@@ -82,6 +82,23 @@ try:
                     student_records = records_df[records_df['이름'] == search_name]
                 else:
                     student_records = pd.DataFrame()
-
-                # 데이터 분리 (출결 vs 지도)
-                attendance_mask = student_records['분류'].str.contains('결석|조
+                
+                # 1. 생활지도 현황
+                st.subheader("📌 학생 지도 현황")
+                c1, c2, c3, c4, c5 = st.columns(5)
+                if not student_records.empty:
+                    c1.metric("외출(공식)", len(student_records[student_records['분류'] == '외출증 사용(공식)']))
+                    c2.metric("외출(포상)", len(student_records[student_records['분류'] == '외출증 사용(포상)']))
+                    c3.metric("무단 외출", len(student_records[student_records['분류'] == '무단 외출 적발']))
+                    c4.metric("흡연(교내/외)", len(student_records[student_records['분류'].str.contains('흡연', na=False)]))
+                    c5.metric("🚨 교권 침해", len(student_records[student_records['분류'].str.contains('교권', na=False)]))
+                else:
+                    for c, title in zip([c1, c2, c3, c4, c5], ["외출(공식)", "외출(포상)", "무단 외출", "흡연(교내/외)", "🚨 교권 침해"]): 
+                        c.metric(title, 0)
+                
+                # 2. 출결 현황
+                st.subheader("⏰ 학생 출결 현황")
+                a1, a2, a3, a4 = st.columns(4)
+                if not student_records.empty:
+                    a1.metric("🤒 질병 (결/조/지)", len(student_records[student_records['분류'].str.contains('질병', na=False)]))
+                    a2.metric("⚠️ 미인정 (결/조/지)", len(student_records[student_records['분류'].str
