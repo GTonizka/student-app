@@ -2,7 +2,7 @@ import streamlit as st
 import traceback
 
 # 1. 페이지 설정
-st.set_page_config(page_title="학생생활지도 관리시스템", layout="wide")
+st.set_page_config(page_title="학생생활지도 및 출결 관리시스템", layout="wide")
 
 # ==========================================
 # 🔒 로그인 (자물쇠) 기능
@@ -11,7 +11,7 @@ if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-    st.title("🔒 학생생활지도 관리시스템")
+    st.title("🔒 학생생활지도 및 출결 관리시스템")
     st.info("학생 개인정보 보호를 위해 비밀번호를 입력해 주세요.")
     
     with st.form("login_form"):
@@ -60,7 +60,7 @@ try:
         headers = data.pop(0)
         return pd.DataFrame(data, columns=headers)
 
-    st.title("🏫 학생생활지도 관리시스템")
+    st.title("🏫 학급 올인원 관리시스템 (생활지도 & 출결)")
 
     students_df = get_data(student_sheet)
     records_df = get_data(record_sheet)
@@ -83,6 +83,10 @@ try:
                 else:
                     student_records = pd.DataFrame()
 
+                # 데이터 분리 (출결 vs 지도)
+                attendance_mask = student_records['분류'].str.contains('결석|조퇴|지각', na=False) if not student_records.empty else pd.Series(dtype=bool)
+                
+                # 1. 생활지도 현황
                 st.subheader("📌 학생 지도 현황")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 if not student_records.empty:
@@ -94,39 +98,75 @@ try:
                 else:
                     for c, title in zip([c1, c2, c3, c4, c5], ["외출(공식)", "외출(포상)", "무단 외출", "흡연(교내/외)", "🚨 교권 침해"]): 
                         c.metric(title, 0)
+                
+                # 2. 출결 현황 (새롭게 추가됨)
+                st.subheader("⏰ 학생 출결 현황")
+                a1, a2, a3, a4 = st.columns(4)
+                if not student_records.empty:
+                    a1.metric("🤒 질병 (결/조/지)", len(student_records[student_records['분류'].str.contains('질병', na=False)]))
+                    a2.metric("⚠️ 미인정 (결/조/지)", len(student_records[student_records['분류'].str.contains('미인정', na=False)]))
+                    a3.metric("✅ 출석인정 (결/조/지)", len(student_records[student_records['분류'].str.contains('출석인정', na=False)]))
+                    a4.metric("기타 (결/조/지)", len(student_records[student_records['분류'].str.contains('기타결석|기타조퇴|기타지각', na=False)]))
+                else:
+                    for a, title in zip([a1, a2, a3, a4], ["🤒 질병", "⚠️ 미인정", "✅ 출석인정", "기타"]): 
+                        a.metric(f"{title} (결/조/지)", 0)
 
                 st.divider()
                 
-                st.subheader("📝 신규 지도 내용 작성")
-                category = st.radio("기록 종류 선택", ["일반 지도", "교권 침해", "생활교육위원회 징계"], horizontal=True)
+                st.subheader("📝 신규 내용 작성")
+                category = st.radio("기록 종류 선택", ["일반 지도", "교권 침해", "생활교육위원회 징계", "출결 관리"], horizontal=True)
                 
                 with st.form("input_form", clear_on_submit=True):
-                    if category == "일반 지도":
-                        rtype = st.selectbox("항목", ["외출증 사용(공식)", "외출증 사용(포상)", "무단 외출 적발", "교외 흡연 적발", "교내 흡연 적발", "기타"])
-                        content = st.text_area("상세 내용")
-                    elif category == "교권 침해":
-                        rtype = st.selectbox("항목", ["교권침해(수업 방해)", "교권침해(폭언 및 욕설)", "교권침해(정당한 지도 불응)", "교권침해(기타)"])
-                        content = st.text_area("사안 상세 내용 (육하원칙에 의거하여 작성)")
+                    # 출결 관리용 UI (심플하게)
+                    if category == "출결 관리":
+                        rtype = st.selectbox("출결 항목", [
+                            "출석인정결석", "출석인정조퇴", "출석인정지각", 
+                            "질병결석", "질병조퇴", "질병지각", 
+                            "미인정결석", "미인정조퇴", "미인정지각", 
+                            "기타결석", "기타조퇴", "기타지각"
+                        ])
+                        content = st.text_area("사유 (예: 감기몸살, 병원 진료 등)")
+                        
+                        col_a, col_d = st.columns(2)
+                        aut = col_a.text_input("작성자(담임/교사명)")
+                        record_date = col_d.date_input("📅 출결 해당 일자", datetime.now().date())
+                        loc = "출결처리" # 백그라운드로 장소 저장
+                        record_time = datetime.now().time()
+                        
+                    # 일반 지도용 UI
                     else:
-                        level = st.selectbox("징계 단계", ["교내봉사", "사회봉사", "특별교육", "출석정지(5일)", "출석정지(10일)", "퇴학"])
-                        rtype = "생활교육위원회 징계"
-                        content = f"[{level}] " + st.text_area("징계 사유")
-                    
-                    col_l, col_a = st.columns(2)
-                    loc = col_l.text_input("장소")
-                    aut = col_a.text_input("작성자(교사명)")
+                        if category == "일반 지도":
+                            rtype = st.selectbox("항목", ["외출증 사용(공식)", "외출증 사용(포상)", "무단 외출 적발", "교외 흡연 적발", "교내 흡연 적발", "기타"])
+                            content = st.text_area("상세 내용")
+                        elif category == "교권 침해":
+                            rtype = st.selectbox("항목", ["교권침해(수업 방해)", "교권침해(폭언 및 욕설)", "교권침해(정당한 지도 불응)", "교권침해(기타)"])
+                            content = st.text_area("사안 상세 내용 (육하원칙에 의거하여 작성)")
+                        else:
+                            level = st.selectbox("징계 단계", ["교내봉사", "사회봉사", "특별교육", "출석정지(5일)", "출석정지(10일)", "퇴학"])
+                            rtype = "생활교육위원회 징계"
+                            content = f"[{level}] " + st.text_area("징계 사유")
+                        
+                        col_l, col_a = st.columns(2)
+                        loc = col_l.text_input("장소")
+                        aut = col_a.text_input("작성자(교사명)")
+                        
+                        col_d, col_t = st.columns(2)
+                        record_date = col_d.date_input("📅 발생 일자", datetime.now().date())
+                        record_time = col_t.time_input("⏰ 발생 시간", datetime.now().time())
                     
                     if st.form_submit_button("기록 저장하기"):
-                        if not aut or not loc:
-                            st.error("장소와 작성자를 입력해주세요.")
+                        if not aut:
+                            st.error("작성자 이름을 입력해주세요.")
+                        elif category != "출결 관리" and not loc:
+                            st.error("장소를 입력해주세요.")
                         else:
-                            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            record_sheet.append_row([search_name, rtype, content, loc, aut, now])
+                            selected_datetime = datetime.combine(record_date, record_time).strftime("%Y-%m-%d %H:%M:%S")
+                            record_sheet.append_row([search_name, rtype, content, loc, aut, selected_datetime])
                             st.success("데이터가 구글 시트에 안전하게 저장되었습니다.")
                             st.rerun()
 
                 st.divider()
-                st.subheader("📜 학생 기록")
+                st.subheader("📜 학생 기록 전체")
                 if not student_records.empty:
                     st.dataframe(student_records.sort_values('작성일시', ascending=False), use_container_width=True, hide_index=True)
                 else:
@@ -134,7 +174,7 @@ try:
             else:
                 st.warning("해당 이름의 학생을 찾을 수 없습니다.")
 
-    # --- ★ 탭 2: 학급별 명렬표 ---
+    # --- 탭 2: 학급별 명렬표 ---
     with tab2:
         st.header("📋 학급별 명렬표 및 세부 현황")
         
@@ -163,42 +203,43 @@ try:
                 for index, row in class_df.iterrows():
                     student_name = row['이름']
                     
-                    # 1. 기록 먼저 확인하기
                     if not records_df.empty and '이름' in records_df.columns:
                         s_records = records_df[records_df['이름'] == student_name]
                     else:
                         s_records = pd.DataFrame()
                         
-                    # 2. 기록 유무에 따라 아코디언 제목을 눈에 띄게 변경
-                    if s_records.empty:
-                        expander_title = f"⬜ {row['번호']}번 {student_name} (상태: {row['학적상태']})"
-                    else:
-                        expander_title = f"💖 [기록 있음] {row['번호']}번 {student_name} (상태: {row['학적상태']})"
+                    # 출결 기록과 생활지도 기록을 분리하여 알림 색상 결정
+                    is_attendance = s_records['분류'].str.contains('결석|조퇴|지각', na=False) if not s_records.empty else pd.Series(dtype=bool)
+                    has_guidance = not s_records[~is_attendance].empty
+                    has_only_attendance = not s_records[is_attendance].empty and not has_guidance
                     
-                    # 아코디언 메뉴 생성
+                    if has_guidance:
+                        expander_title = f"💖 [지도] {row['번호']}번 {student_name} (상태: {row['학적상태']})"
+                    elif has_only_attendance:
+                        expander_title = f"🗓️ [출결] {row['번호']}번 {student_name} (상태: {row['학적상태']})"
+                    else:
+                        expander_title = f"⬜ {row['번호']}번 {student_name} (상태: {row['학적상태']})"
+                    
                     with st.expander(expander_title):
                         if s_records.empty:
-                            st.info("이 학생에 대한 지도 기록이 없습니다.")
+                            st.info("이 학생에 대한 기록이 없습니다.")
                         else:
-                            # ★ 연한 핑크색 하이라이트 배경 추가
-                            st.markdown(
-                                """
-                                <div style='background-color: #FFF0F5; padding: 15px; border-radius: 8px; border-left: 5px solid #FF69B4; margin-bottom: 15px;'>
-                                    <span style='color: #C71585; font-weight: bold;'>📌 이 학생은 누적된 생활지도 기록이 있습니다. 아래 현황을 확인해 주세요.</span>
-                                </div>
-                                """, 
-                                unsafe_allow_html=True
-                            )
-                            
-                            c1, c2, c3 = st.columns(3)
-                            
-                            cnt_gyogwon = len(s_records[s_records['분류'].str.contains('교권', na=False)])
-                            cnt_jinggye = len(s_records[s_records['분류'] == '생활교육위원회 징계'])
-                            cnt_normal = len(s_records) - cnt_gyogwon - cnt_jinggye
-                            
-                            c1.metric("📝 일반 지도", cnt_normal)
-                            c2.metric("🚨 교권 침해", cnt_gyogwon)
-                            c3.metric("⚖️ 위원회 징계", cnt_jinggye)
+                            if has_guidance:
+                                st.markdown(
+                                    """
+                                    <div style='background-color: #FFF0F5; padding: 15px; border-radius: 8px; border-left: 5px solid #FF69B4; margin-bottom: 15px;'>
+                                        <span style='color: #C71585; font-weight: bold;'>📌 이 학생은 누적된 [생활지도] 기록이 있습니다.</span>
+                                    </div>
+                                    """, unsafe_allow_html=True
+                                )
+                            elif has_only_attendance:
+                                st.markdown(
+                                    """
+                                    <div style='background-color: #F0F8FF; padding: 15px; border-radius: 8px; border-left: 5px solid #4682B4; margin-bottom: 15px;'>
+                                        <span style='color: #4682B4; font-weight: bold;'>🗓️ 이 학생은 누적된 [출결] 기록이 있습니다.</span>
+                                    </div>
+                                    """, unsafe_allow_html=True
+                                )
                             
                             st.markdown("**🔍 상세 기록 내역**")
                             display_records = s_records.drop(columns=['이름'], errors='ignore')
@@ -221,14 +262,14 @@ try:
             excel_data = output.getvalue()
             
             st.download_button(
-                label="📊 전체 지도기록 엑셀 다운로드",
+                label="📊 전체 지도 및 출결 기록 엑셀 다운로드",
                 data=excel_data,
-                file_name=f"학생지도기록_전체_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                file_name=f"학생기록_전체_{datetime.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
             
             st.divider()
-            st.subheader("📅 월별 누적 지도 건수 그래프")
+            st.subheader("📅 월별 누적 전체 건수 그래프")
             try:
                 stats_df = records_df.copy()
                 stats_df['변환된일시'] = pd.to_datetime(stats_df['작성일시'], errors='coerce')
