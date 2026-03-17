@@ -65,10 +65,9 @@ try:
     students_df = get_data(student_sheet)
     records_df = get_data(record_sheet)
 
-    # ★ 탭이 4개로 늘어났습니다!
-    tab1, tab2, tab3, tab4 = st.tabs(["🔍 학생 지도 기록", "🗓️ 반별 출결 관리", "📋 학급별 명렬표", "📊 통계 및 다운로드"])
+    tab1, tab2, tab3 = st.tabs(["🔍 학생 기록 및 작성", "📋 학급별 명렬표", "📊 통계 및 다운로드"])
 
-    # --- 탭 1: 학생 조회 및 지도 기록 ---
+    # --- 탭 1: 학생 조회 및 기록 ---
     with tab1:
         search_name = st.text_input("학생 이름을 입력하세요", placeholder="이름 입력 후 엔터")
         
@@ -84,8 +83,5 @@ try:
                 else:
                     student_records = pd.DataFrame()
 
-                # 학생 지도 현황
-                st.subheader("📌 학생 지도 현황")
-                c1, c2, c3, c4, c5 = st.columns(5)
-                if not student_records.empty:
-                    c1.metric("외출(공식)", len(student_records[student_records['
+                # 데이터 분리 (출결 vs 지도)
+                attendance_mask = student_records['분류'].str.contains('결석|조
