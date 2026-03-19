@@ -68,146 +68,174 @@ try:
     tab1, tab_att, tab2, tab3 = st.tabs(["🔍 학생 지도", "⏰ 출결 관리", "📋 학급 명렬표", "📊 통계 및 다운로드"])
 
     # ==========================================
-    # --- 탭 1: 학생 지도 및 기록 ---
+    # --- 탭 1: 학생 지도 및 기록 (동명이인 처리 완벽 적용) ---
     # ==========================================
     with tab1:
-        search_guide = st.text_input("지도가 필요한 학생 이름 검색", placeholder="이름 입력 후 엔터", key="g_search")
-        
-        if search_guide:
-            st_info = students_df[students_df['이름'] == search_guide]
+        if not students_df.empty:
+            # 명렬표를 학년/반/번호 순으로 깔끔하게 정렬
+            temp_df = students_df.copy()
+            temp_df['학년_숫자'] = pd.to_numeric(temp_df['학년'], errors='coerce')
+            temp_df['반_숫자'] = pd.to_numeric(temp_df['반'], errors='coerce')
+            temp_df['번호_숫자'] = pd.to_numeric(temp_df['번호'], errors='coerce')
+            temp_df = temp_df.sort_values(['학년_숫자', '반_숫자', '번호_숫자'])
             
-            if not st_info.empty:
-                info = st_info.iloc[0]
-                st.success(f"📍 {info['학년']}학년 {info['반']}반 {info['번호']}번 {info['이름']} (상태: {info['학적상태']})")
+            # 동명이인 방지용 학번+이름 리스트 만들기
+            stu_options = []
+            for _, r in temp_df.iterrows():
+                stu_options.append(f"{r['학년']}학년 {r['반']}반 {r['번호']}번 {r['이름']}")
                 
-                if not records_df.empty and '이름' in records_df.columns:
-                    st_records = records_df[records_df['이름'] == search_guide]
-                else:
-                    st_records = pd.DataFrame()
-
-                if not st_records.empty:
-                    c_o1 = len(st_records[st_records['분류'] == '외출증 사용(공식)'])
-                    c_o2 = len(st_records[st_records['분류'] == '외출증 사용(포상)'])
-                    c_o3 = len(st_records[st_records['분류'] == '무단 외출 적발'])
-                    c_sm = len(st_records[st_records['분류'].str.contains('흡연', na=False)])
-                    c_ri = len(st_records[st_records['분류'].str.contains('교권', na=False)])
-                else:
-                    c_o1 = c_o2 = c_o3 = c_sm = c_ri = 0
-
-                st.subheader("📌 학생 지도 현황 요약")
-                c1, c2, c3, c4, c5 = st.columns(5)
-                c1.metric("외출(공식)", c_o1)
-                c2.metric("외출(포상)", c_o2)
-                c3.metric("무단 외출", c_o3)
-                c4.metric("흡연(교내/외)", c_sm)
-                c5.metric("🚨 교권 침해", c_ri)
-
-                # --- ★ 추가된 기능: 학생 전체 기록(표) 한눈에 보기 ---
-                st.markdown("**📜 누적 전체 기록 (지도 및 출결)**")
-                if not st_records.empty:
-                    df_show_all = st_records.drop(columns=['이름'], errors='ignore')
-                    st.dataframe(df_show_all.sort_values('작성일시', ascending=False), use_container_width=True, hide_index=True)
-                else:
-                    st.info("이 학생에 대한 과거 기록이 없습니다.")
-
-                st.divider()
-                st.subheader("📝 신규 지도 내용 작성")
-                g_cat = st.radio("기록 종류 선택", ["일반 지도", "교권 침해", "생활교육위원회 징계"], horizontal=True)
+            # ★ 텍스트 입력창 대신 스마트 검색창(selectbox) 사용
+            sel_stu_str = st.selectbox(
+                "🔍 지도가 필요한 학생 검색 (클릭 후 이름을 입력해보세요)", 
+                ["(학생 선택)"] + stu_options, 
+                key="g_search"
+            )
+            
+            if sel_stu_str != "(학생 선택)":
+                # 선택된 글씨에서 진짜 이름과 학급 정보 분리
+                search_guide = sel_stu_str.split("번 ", 1)[1]
+                search_grade = str(sel_stu_str.split("학년")[0].strip())
+                search_class = str(sel_stu_str.split("학년 ")[1].split("반")[0].strip())
                 
-                with st.form("guide_form", clear_on_submit=True):
-                    if g_cat == "일반 지도":
-                        rtype = st.selectbox("항목", ["외출증 사용(공식)", "외출증 사용(포상)", "무단 외출 적발", "교외 흡연 적발", "교내 흡연 적발", "기타"])
-                        content = st.text_area("상세 내용")
-                    elif g_cat == "교권 침해":
-                        rtype = st.selectbox("항목", ["교권침해(수업 방해)", "교권침해(폭언 및 욕설)", "교권침해(정당한 지도 불응)", "교권침해(기타)"])
-                        content = st.text_area("사안 상세 내용 (육하원칙에 의거하여 작성)")
+                # 정확히 그 학년/반의 학생 정보만 쏙 빼오기
+                st_info_match = students_df[
+                    (students_df['이름'] == search_guide) & 
+                    (students_df['학년'].astype(str) == search_grade) & 
+                    (students_df['반'].astype(str) == search_class)
+                ]
+                
+                if not st_info_match.empty:
+                    info = st_info_match.iloc[0]
+                    st.success(f"📍 {info['학년']}학년 {info['반']}반 {info['번호']}번 {info['이름']} (상태: {info['학적상태']})")
+                    
+                    if not records_df.empty and '이름' in records_df.columns:
+                        st_records = records_df[records_df['이름'] == search_guide]
                     else:
-                        level = st.selectbox("징계 단계", ["교내봉사", "사회봉사", "특별교육", "출석정지(5일)", "출석정지(10일)", "퇴학"])
-                        rtype = "생활교육위원회 징계"
-                        content = f"[{level}] " + st.text_area("징계 사유")
-                    
-                    col_l, col_a = st.columns(2)
-                    loc = col_l.text_input("장소")
-                    aut = col_a.text_input("작성자(교사명)")
-                    
-                    col_d, col_t = st.columns(2)
-                    r_date = col_d.date_input("📅 발생 일자", datetime.now().date(), key="gd")
-                    r_time = col_t.time_input("⏰ 발생 시간", datetime.now().time(), key="gt")
-                    
-                    if st.form_submit_button("기록 저장하기"):
-                        if not aut or not loc:
-                            st.error("장소와 작성자를 입력해주세요.")
-                        else:
-                            sel_dt = datetime.combine(r_date, r_time).strftime("%Y-%m-%d %H:%M:%S")
-                            record_sheet.append_row([search_guide, rtype, content, loc, aut, sel_dt])
-                            st.success("지도 데이터가 안전하게 저장되었습니다.")
-                            st.rerun()
+                        st_records = pd.DataFrame()
 
-                st.divider()
-                st.subheader("🛠️ 기존 생활지도 기록 수정 및 삭제")
-                
-                if not st_records.empty:
-                    mask_att_edit = st_records['분류'].str.contains('결석|조퇴|지각|결과', na=False)
-                    st_records_guide = st_records[~mask_att_edit]
+                    if not st_records.empty:
+                        c_o1 = len(st_records[st_records['분류'] == '외출증 사용(공식)'])
+                        c_o2 = len(st_records[st_records['분류'] == '외출증 사용(포상)'])
+                        c_o3 = len(st_records[st_records['분류'] == '무단 외출 적발'])
+                        c_sm = len(st_records[st_records['분류'].str.contains('흡연', na=False)])
+                        c_ri = len(st_records[st_records['분류'].str.contains('교권', na=False)])
+                    else:
+                        c_o1 = c_o2 = c_o3 = c_sm = c_ri = 0
+
+                    st.subheader("📌 학생 지도 현황 요약")
+                    c1, c2, c3, c4, c5 = st.columns(5)
+                    c1.metric("외출(공식)", c_o1)
+                    c2.metric("외출(포상)", c_o2)
+                    c3.metric("무단 외출", c_o3)
+                    c4.metric("흡연(교내/외)", c_sm)
+                    c5.metric("🚨 교권 침해", c_ri)
+
+                    st.markdown("**📜 누적 전체 기록 (지도 및 출결)**")
+                    if not st_records.empty:
+                        df_show_all = st_records.drop(columns=['이름'], errors='ignore')
+                        st.dataframe(df_show_all.sort_values('작성일시', ascending=False), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("이 학생에 대한 과거 기록이 없습니다.")
+
+                    st.divider()
+                    st.subheader("📝 신규 지도 내용 작성")
+                    g_cat = st.radio("기록 종류 선택", ["일반 지도", "교권 침해", "생활교육위원회 징계"], horizontal=True)
                     
-                    if not st_records_guide.empty:
-                        rec_opts = []
-                        for _, r in st_records_guide.iterrows():
-                            v_time = str(r.values[5])
-                            v_type = str(r.values[1])
-                            v_cont = str(r.values[2])
-                            short_c = v_cont[:20] + "..." if len(v_cont) > 20 else v_cont
-                            rec_opts.append(f"[{v_time}] {v_type} - {short_c}")
-                            
-                        sel_rec = st.selectbox("수정 또는 삭제할 생활지도 기록을 선택하세요", ["(선택 안함)"] + rec_opts)
+                    with st.form("guide_form", clear_on_submit=True):
+                        if g_cat == "일반 지도":
+                            rtype = st.selectbox("항목", ["외출증 사용(공식)", "외출증 사용(포상)", "무단 외출 적발", "교외 흡연 적발", "교내 흡연 적발", "기타"])
+                            content = st.text_area("상세 내용")
+                        elif g_cat == "교권 침해":
+                            rtype = st.selectbox("항목", ["교권침해(수업 방해)", "교권침해(폭언 및 욕설)", "교권침해(정당한 지도 불응)", "교권침해(기타)"])
+                            content = st.text_area("사안 상세 내용 (육하원칙에 의거하여 작성)")
+                        else:
+                            level = st.selectbox("징계 단계", ["교내봉사", "사회봉사", "특별교육", "출석정지(5일)", "출석정지(10일)", "퇴학"])
+                            rtype = "생활교육위원회 징계"
+                            content = f"[{level}] " + st.text_area("징계 사유")
                         
-                        if sel_rec != "(선택 안함)":
-                            t_time = sel_rec.split("]")[0].replace("[", "")
-                            t_row = st_records_guide[st_records_guide.iloc[:, 5].astype(str) == t_time].iloc[0]
+                        col_l, col_a = st.columns(2)
+                        loc = col_l.text_input("장소")
+                        aut = col_a.text_input("작성자(교사명)")
+                        
+                        col_d, col_t = st.columns(2)
+                        r_date = col_d.date_input("📅 발생 일자", datetime.now().date(), key="gd")
+                        r_time = col_t.time_input("⏰ 발생 시간", datetime.now().time(), key="gt")
+                        
+                        if st.form_submit_button("기록 저장하기"):
+                            if not aut or not loc:
+                                st.error("장소와 작성자를 입력해주세요.")
+                            else:
+                                sel_dt = datetime.combine(r_date, r_time).strftime("%Y-%m-%d %H:%M:%S")
+                                record_sheet.append_row([search_guide, rtype, content, loc, aut, sel_dt])
+                                st.success("지도 데이터가 안전하게 저장되었습니다.")
+                                st.rerun()
+
+                    st.divider()
+                    st.subheader("🛠️ 기존 생활지도 기록 수정 및 삭제")
+                    
+                    if not st_records.empty:
+                        mask_att_edit = st_records['분류'].str.contains('결석|조퇴|지각|결과', na=False)
+                        st_records_guide = st_records[~mask_att_edit]
+                        
+                        if not st_records_guide.empty:
+                            rec_opts = []
+                            for _, r in st_records_guide.iterrows():
+                                v_time = str(r.values[5])
+                                v_type = str(r.values[1])
+                                v_cont = str(r.values[2])
+                                short_c = v_cont[:20] + "..." if len(v_cont) > 20 else v_cont
+                                rec_opts.append(f"[{v_time}] {v_type} - {short_c}")
+                                
+                            sel_rec = st.selectbox("수정 또는 삭제할 생활지도 기록을 선택하세요", ["(선택 안함)"] + rec_opts)
                             
-                            with st.form("edit_form"):
-                                st.info("👇 기존 생활지도 내용이 불러와졌습니다. 원하는 대로 수정한 뒤 저장하세요.")
-                                e_type = st.text_input("분류 (기존 텍스트 변경 가능)", str(t_row.values[1]))
-                                e_cont = st.text_area("상세 내용(사유)", str(t_row.values[2]))
+                            if sel_rec != "(선택 안함)":
+                                t_time = sel_rec.split("]")[0].replace("[", "")
+                                t_row = st_records_guide[st_records_guide.iloc[:, 5].astype(str) == t_time].iloc[0]
                                 
-                                ec1, ec2 = st.columns(2)
-                                e_loc = ec1.text_input("장소", str(t_row.values[3]))
-                                e_aut = ec2.text_input("작성자", str(t_row.values[4]))
-                                
-                                b1, b2 = st.columns(2)
-                                do_edit = b1.form_submit_button("✅ 수정한 내용으로 덮어쓰기")
-                                do_del = b2.form_submit_button("🚨 이 기록 영구 삭제하기")
-                                
-                                if do_edit:
-                                    all_v = record_sheet.get_all_values()
-                                    r_id = -1
-                                    for i, rv in enumerate(all_v):
-                                        if i > 0 and rv[0] == search_guide and rv[5] == t_time:
-                                            r_id = i + 1
-                                            break
-                                    if r_id != -1:
-                                        record_sheet.update(f"A{r_id}:F{r_id}", [[search_guide, e_type, e_cont, e_loc, e_aut, t_time]])
-                                        st.success("✅ 생활지도 기록이 성공적으로 수정되었습니다!")
-                                        st.rerun()
-                                        
-                                if do_del:
-                                    all_v = record_sheet.get_all_values()
-                                    r_id = -1
-                                    for i, rv in enumerate(all_v):
-                                        if i > 0 and rv[0] == search_guide and rv[5] == t_time:
-                                            r_id = i + 1
-                                            break
-                                    if r_id != -1:
-                                        record_sheet.delete_rows(r_id)
-                                        st.warning("🚨 선택하신 기록이 구글 시트에서 완전히 삭제되었습니다.")
-                                        st.rerun()
+                                with st.form("edit_form"):
+                                    st.info("👇 기존 생활지도 내용이 불러와졌습니다. 원하는 대로 수정한 뒤 저장하세요.")
+                                    e_type = st.text_input("분류 (기존 텍스트 변경 가능)", str(t_row.values[1]))
+                                    e_cont = st.text_area("상세 내용(사유)", str(t_row.values[2]))
+                                    
+                                    ec1, ec2 = st.columns(2)
+                                    e_loc = ec1.text_input("장소", str(t_row.values[3]))
+                                    e_aut = ec2.text_input("작성자", str(t_row.values[4]))
+                                    
+                                    b1, b2 = st.columns(2)
+                                    do_edit = b1.form_submit_button("✅ 수정한 내용으로 덮어쓰기")
+                                    do_del = b2.form_submit_button("🚨 이 기록 영구 삭제하기")
+                                    
+                                    if do_edit:
+                                        all_v = record_sheet.get_all_values()
+                                        r_id = -1
+                                        for i, rv in enumerate(all_v):
+                                            if i > 0 and rv[0] == search_guide and rv[5] == t_time:
+                                                r_id = i + 1
+                                                break
+                                        if r_id != -1:
+                                            record_sheet.update(f"A{r_id}:F{r_id}", [[search_guide, e_type, e_cont, e_loc, e_aut, t_time]])
+                                            st.success("✅ 생활지도 기록이 성공적으로 수정되었습니다!")
+                                            st.rerun()
+                                            
+                                    if do_del:
+                                        all_v = record_sheet.get_all_values()
+                                        r_id = -1
+                                        for i, rv in enumerate(all_v):
+                                            if i > 0 and rv[0] == search_guide and rv[5] == t_time:
+                                                r_id = i + 1
+                                                break
+                                        if r_id != -1:
+                                            record_sheet.delete_rows(r_id)
+                                            st.warning("🚨 선택하신 기록이 구글 시트에서 완전히 삭제되었습니다.")
+                                            st.rerun()
+                        else:
+                            st.info("수정하거나 삭제할 과거 생활지도 기록이 없습니다.")
                     else:
                         st.info("수정하거나 삭제할 과거 생활지도 기록이 없습니다.")
                 else:
-                    st.info("수정하거나 삭제할 과거 생활지도 기록이 없습니다.")
-
-            else:
-                st.warning("해당 이름의 학생을 찾을 수 없습니다.")
+                    st.warning("오류: 선택한 학생의 정보를 찾을 수 없습니다.")
+        else:
+            st.warning("학생명부 데이터가 없습니다. 구글 시트에 학생 명단을 확인해 주세요.")
 
     # ==========================================
     # --- 탭 2: 출결 관리 (명단 출력/빠른 입력/수정삭제) ---
@@ -291,7 +319,6 @@ try:
                     else:
                         s_edit_rec = pd.DataFrame()
                         
-                    # --- ★ 추가된 기능: 선택한 학생의 과거 출결 기록(표) 띄워주기 ---
                     st.markdown(f"**📜 [{edit_s_name}] 학생 누적 출결 기록**")
                     if not s_edit_rec.empty:
                         df_show_att = s_edit_rec.drop(columns=['이름'], errors='ignore')
@@ -466,10 +493,14 @@ try:
                 st.divider()
                 
                 st.subheader("📑 월별 학급/학생 출결 요약 통계 (자동 계산)")
+                st.caption("※ 참고: 현재 구글 시트 저장 방식상 전교에 동명이인이 있을 경우 통계가 한 학생에게 합산되어 보일 수 있습니다.")
                 
                 if not df_att.empty and not students_df.empty:
                     stu_info = students_df[['학년', '반', '번호', '이름']].copy()
-                    merged_att = pd.merge(df_att, stu_info, on='이름', how='left')
+                    
+                    # 동명이인 통계 오류 방지 (첫 번째 데이터 유지)
+                    stu_info_unique = stu_info.drop_duplicates(subset=['이름'])
+                    merged_att = pd.merge(df_att, stu_info_unique, on='이름', how='left')
                     
                     pivot_df = pd.pivot_table(
                         merged_att, 
