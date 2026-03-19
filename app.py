@@ -36,8 +36,12 @@ try:
     import gspread
     from google.oauth2.service_account import Credentials
     import pandas as pd
-    from datetime import datetime
+    from datetime import datetime, timedelta
     import io
+
+    # ★ 추가된 부분: 한국 시간(KST)을 구하는 전용 함수 생성
+    def get_kst_now():
+        return datetime.utcnow() + timedelta(hours=9)
 
     @st.cache_resource
     def init_connection():
@@ -68,7 +72,7 @@ try:
     tab1, tab_att, tab2, tab3 = st.tabs(["🔍 학생 지도", "⏰ 출결 관리", "📋 학급 명렬표", "📊 통계 및 다운로드"])
 
     # ==========================================
-    # --- 탭 1: 학생 지도 및 기록 (스마트 동명이인 검색) ---
+    # --- 탭 1: 학생 지도 및 기록 ---
     # ==========================================
     with tab1:
         if not students_df.empty:
@@ -87,7 +91,6 @@ try:
                         is_selected = True
                     else:
                         st.info(f"💡 '{search_input}' 학생이 {len(matched_df)}명 검색되었습니다. 정확한 학급을 선택해 주세요.")
-                        # 동명이인 학급 선택창
                         options = [f"{r['학년']}학년 {r['반']}반 {r['번호']}번 {r['이름']}" for _, r in matched_df.iterrows()]
                         sel_option = st.selectbox("학생 선택", options, key="multi_sel")
                         
@@ -153,8 +156,9 @@ try:
                             aut = col_a.text_input("작성자(교사명)")
                             
                             col_d, col_t = st.columns(2)
-                            r_date = col_d.date_input("📅 발생 일자", datetime.now().date(), key="gd")
-                            r_time = col_t.time_input("⏰ 발생 시간", datetime.now().time(), key="gt")
+                            # ★ KST 적용
+                            r_date = col_d.date_input("📅 발생 일자", get_kst_now().date(), key="gd")
+                            r_time = col_t.time_input("⏰ 발생 시간", get_kst_now().time(), key="gt")
                             
                             if st.form_submit_button("기록 저장하기"):
                                 if not aut or not loc:
@@ -231,7 +235,7 @@ try:
             st.warning("학생명부 데이터가 없습니다. 구글 시트에 학생 명단을 확인해 주세요.")
 
     # ==========================================
-    # --- 탭 2: 출결 관리 (명단 출력/빠른 입력/수정삭제) ---
+    # --- 탭 2: 출결 관리 ---
     # ==========================================
     with tab_att:
         st.subheader("⏰ 학급별 출석부 빠른 입력")
@@ -260,7 +264,8 @@ try:
                 
                 c_top1, c_top2 = st.columns(2)
                 global_aut = c_top1.text_input("👨‍🏫 작성자(담임/교사명)", key="g_aut")
-                global_date = c_top2.date_input("📅 출결 해당 일자", datetime.now().date(), key="g_date")
+                # ★ KST 적용
+                global_date = c_top2.date_input("📅 출결 해당 일자", get_kst_now().date(), key="g_date")
                 
                 st.markdown("### 📋 출석부 명단")
                 
@@ -294,7 +299,8 @@ try:
                             if not global_aut:
                                 st.error("☝️ 위쪽에 작성자 이름을 먼저 입력해주세요!")
                             else:
-                                sel_dt_a = datetime.combine(global_date, datetime.now().time()).strftime("%Y-%m-%d %H:%M:%S")
+                                # ★ KST 적용
+                                sel_dt_a = datetime.combine(global_date, get_kst_now().time()).strftime("%Y-%m-%d %H:%M:%S")
                                 record_sheet.append_row([s_name, a_type, a_content, "출결처리", global_aut, sel_dt_a])
                                 st.success(f"✅ {s_name} ({a_type}) 저장 완료!")
                                 
@@ -450,7 +456,8 @@ try:
             st.download_button(
                 label="📁 전체 기록 원본 엑셀 다운로드 (지도+출결)",
                 data=excel_data_all,
-                file_name=f"학생통합기록_원본_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                # ★ KST 적용
+                file_name=f"학생통합기록_원본_{get_kst_now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
             
@@ -517,7 +524,8 @@ try:
                     st.download_button(
                         label="📥 [자동계산] 월별/학생별 출결 통계표 엑셀 다운로드",
                         data=excel_data_att,
-                        file_name=f"자동출결통계_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        # ★ KST 적용
+                        file_name=f"자동출결통계_{get_kst_now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                 else:
