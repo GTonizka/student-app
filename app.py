@@ -187,11 +187,13 @@ try:
                         
                         c1.markdown(f"**{s_num}번** {s_name}")
                         
+                        # ★ 수정됨: '결과' 항목 4가지가 모두 추가되었습니다!
                         a_type = c2.selectbox(
                             "항목", 
                             ["질병결석", "미인정결석", "출석인정결석", "기타결석",
                              "질병조퇴", "미인정조퇴", "출석인정조퇴", "기타조퇴",
-                             "질병지각", "미인정지각", "출석인정지각", "기타지각"],
+                             "질병지각", "미인정지각", "출석인정지각", "기타지각",
+                             "질병결과", "미인정결과", "출석인정결과", "기타결과"],
                             label_visibility="collapsed"
                         )
                         
@@ -245,7 +247,8 @@ try:
                     else:
                         s_rec = pd.DataFrame()
                         
-                    is_att = s_rec['분류'].str.contains('결석|조퇴|지각', na=False) if not s_rec.empty else pd.Series(dtype=bool)
+                    # ★ 수정됨: '결과' 단어도 출결 기록으로 완벽히 인식합니다!
+                    is_att = s_rec['분류'].str.contains('결석|조퇴|지각|결과', na=False) if not s_rec.empty else pd.Series(dtype=bool)
                     has_guide = not s_rec[~is_att].empty
                     has_only_att = not s_rec[is_att].empty and not has_guide
                     
@@ -272,7 +275,7 @@ try:
                 st.info("해당 학급에 등록된 학생이 없습니다.")
 
     # ==========================================
-    # --- ★ 탭 4: 통계 및 엑셀 다운로드 (자동 피벗 추가) ---
+    # --- 탭 4: 분리형 통계 및 다운로드 (자동 피벗 추가) ---
     # ==========================================
     with tab3:
         st.header("📈 학교 전체 통계 및 다운로드")
@@ -300,7 +303,8 @@ try:
                 stats_df = stats_df.dropna(subset=['변환된일시'])
                 stats_df['월'] = stats_df['변환된일시'].dt.strftime('%Y년 %m월')
                 
-                mask_att = stats_df['분류'].str.contains('결석|조퇴|지각', na=False)
+                # ★ 수정됨: '결과' 단어도 출결 통계로 완벽히 분리됩니다!
+                mask_att = stats_df['분류'].str.contains('결석|조퇴|지각|결과', na=False)
                 df_att = stats_df[mask_att].copy()
                 df_guide = stats_df[~mask_att]
                 
@@ -324,15 +328,13 @@ try:
 
                 st.divider()
                 
-                # --- ★ 새로운 기능: 월별/학급별/학생별 출결 자동 요약(피벗) ---
+                # --- 월별/학급별/학생별 출결 자동 요약(피벗) ---
                 st.subheader("📑 월별 학급/학생 출결 요약 통계 (자동 계산)")
                 
                 if not df_att.empty and not students_df.empty:
-                    # 학생명부와 출결기록 병합 (학년, 반, 번호 가져오기)
                     stu_info = students_df[['학년', '반', '번호', '이름']].copy()
                     merged_att = pd.merge(df_att, stu_info, on='이름', how='left')
                     
-                    # 피벗 테이블 생성 (자동으로 건수 세기)
                     pivot_df = pd.pivot_table(
                         merged_att, 
                         index=['월', '학년', '반', '번호', '이름'], 
@@ -341,16 +343,13 @@ try:
                         fill_value=0
                     ).reset_index()
                     
-                    # 깔끔한 정렬을 위해 숫자 변환
                     pivot_df['학년'] = pd.to_numeric(pivot_df['학년'], errors='coerce')
                     pivot_df['반'] = pd.to_numeric(pivot_df['반'], errors='coerce')
                     pivot_df['번호'] = pd.to_numeric(pivot_df['번호'], errors='coerce')
                     pivot_df = pivot_df.sort_values(by=['월', '학년', '반', '번호'])
                     
-                    # 화면에 미리보기 출력
                     st.dataframe(pivot_df, use_container_width=True, hide_index=True)
                     
-                    # 피벗 테이블 엑셀 다운로드
                     output_att = io.BytesIO()
                     with pd.ExcelWriter(output_att, engine='openpyxl') as writer:
                         pivot_df.to_excel(writer, index=False, sheet_name='학생별_출결통계')
