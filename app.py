@@ -135,11 +135,76 @@ try:
                             st.success("지도 데이터가 안전하게 저장되었습니다.")
                             st.rerun()
 
+                # --- 탭 1: 생활지도 기록 전용 수정/삭제 ---
+                st.divider()
+                st.subheader("🛠️ 기존 생활지도 기록 수정 및 삭제")
+                
+                if not st_records.empty:
+                    # 출결 기록은 빼고, 순수 생활지도 기록만 필터링합니다.
+                    mask_att_edit = st_records['분류'].str.contains('결석|조퇴|지각|결과', na=False)
+                    st_records_guide = st_records[~mask_att_edit]
+                    
+                    if not st_records_guide.empty:
+                        rec_opts = []
+                        for _, r in st_records_guide.iterrows():
+                            v_time = str(r.values[5])
+                            v_type = str(r.values[1])
+                            v_cont = str(r.values[2])
+                            short_c = v_cont[:20] + "..." if len(v_cont) > 20 else v_cont
+                            rec_opts.append(f"[{v_time}] {v_type} - {short_c}")
+                            
+                        sel_rec = st.selectbox("수정 또는 삭제할 생활지도 기록을 선택하세요", ["(선택 안함)"] + rec_opts)
+                        
+                        if sel_rec != "(선택 안함)":
+                            t_time = sel_rec.split("]")[0].replace("[", "")
+                            t_row = st_records_guide[st_records_guide.iloc[:, 5].astype(str) == t_time].iloc[0]
+                            
+                            with st.form("edit_form"):
+                                st.info("👇 기존 생활지도 내용이 불러와졌습니다. 원하는 대로 수정한 뒤 저장하세요.")
+                                e_type = st.text_input("분류 (기존 텍스트 변경 가능)", str(t_row.values[1]))
+                                e_cont = st.text_area("상세 내용(사유)", str(t_row.values[2]))
+                                
+                                ec1, ec2 = st.columns(2)
+                                e_loc = ec1.text_input("장소", str(t_row.values[3]))
+                                e_aut = ec2.text_input("작성자", str(t_row.values[4]))
+                                
+                                b1, b2 = st.columns(2)
+                                do_edit = b1.form_submit_button("✅ 수정한 내용으로 덮어쓰기")
+                                do_del = b2.form_submit_button("🚨 이 기록 영구 삭제하기")
+                                
+                                if do_edit:
+                                    all_v = record_sheet.get_all_values()
+                                    r_id = -1
+                                    for i, rv in enumerate(all_v):
+                                        if i > 0 and rv[0] == search_guide and rv[5] == t_time:
+                                            r_id = i + 1
+                                            break
+                                    if r_id != -1:
+                                        record_sheet.update(f"A{r_id}:F{r_id}", [[search_guide, e_type, e_cont, e_loc, e_aut, t_time]])
+                                        st.success("✅ 생활지도 기록이 성공적으로 수정되었습니다!")
+                                        st.rerun()
+                                        
+                                if do_del:
+                                    all_v = record_sheet.get_all_values()
+                                    r_id = -1
+                                    for i, rv in enumerate(all_v):
+                                        if i > 0 and rv[0] == search_guide and rv[5] == t_time:
+                                            r_id = i + 1
+                                            break
+                                    if r_id != -1:
+                                        record_sheet.delete_rows(r_id)
+                                        st.warning("🚨 선택하신 기록이 구글 시트에서 완전히 삭제되었습니다.")
+                                        st.rerun()
+                    else:
+                        st.info("수정하거나 삭제할 과거 생활지도 기록이 없습니다.")
+                else:
+                    st.info("수정하거나 삭제할 과거 생활지도 기록이 없습니다.")
+
             else:
                 st.warning("해당 이름의 학생을 찾을 수 없습니다.")
 
     # ==========================================
-    # --- 탭 2: 출결 관리 (명단 출력/빠른 입력) ---
+    # --- 탭 2: 출결 관리 (명단 출력/빠른 입력/수정삭제) ---
     # ==========================================
     with tab_att:
         st.subheader("⏰ 학급별 출석부 빠른 입력")
@@ -187,7 +252,6 @@ try:
                         
                         c1.markdown(f"**{s_num}번** {s_name}")
                         
-                        # ★ 수정됨: '결과' 항목 4가지가 모두 추가되었습니다!
                         a_type = c2.selectbox(
                             "항목", 
                             ["질병결석", "미인정결석", "출석인정결석", "기타결석",
@@ -206,6 +270,72 @@ try:
                                 sel_dt_a = datetime.combine(global_date, datetime.now().time()).strftime("%Y-%m-%d %H:%M:%S")
                                 record_sheet.append_row([s_name, a_type, a_content, "출결처리", global_aut, sel_dt_a])
                                 st.success(f"✅ {s_name} ({a_type}) 저장 완료!")
+                                
+                # --- ★ 추가된 기능: 출결 전용 수정 및 삭제 ---
+                st.divider()
+                st.subheader("🛠️ 학급 기존 출결 기록 수정 및 삭제")
+                
+                edit_stu_list = [f"{row['번호']}번 {row['이름']}" for idx, row in a_df.iterrows()]
+                sel_edit_stu_str = st.selectbox("수정/삭제할 출결 기록의 학생을 선택하세요", ["(학생 선택)"] + edit_stu_list, key="edit_stu_sel")
+                
+                if sel_edit_stu_str != "(학생 선택)":
+                    edit_s_name = sel_edit_stu_str.split(" ", 1)[1]
+                    
+                    if not records_df.empty and '이름' in records_df.columns:
+                        s_edit_rec = records_df[(records_df['이름'] == edit_s_name) & (records_df['분류'].str.contains('결석|조퇴|지각|결과', na=False))]
+                    else:
+                        s_edit_rec = pd.DataFrame()
+                        
+                    if not s_edit_rec.empty:
+                        rec_opts_a = []
+                        for _, r in s_edit_rec.iterrows():
+                            v_time = str(r.values[5])
+                            v_type = str(r.values[1])
+                            v_cont = str(r.values[2])
+                            short_c = v_cont[:20] + "..." if len(v_cont) > 20 else v_cont
+                            rec_opts_a.append(f"[{v_time}] {v_type} - {short_c}")
+                            
+                        sel_rec_a = st.selectbox("수정 또는 삭제할 출결 기록 선택", ["(선택 안함)"] + rec_opts_a, key="sel_rec_a")
+                        
+                        if sel_rec_a != "(선택 안함)":
+                            t_time_a = sel_rec_a.split("]")[0].replace("[", "")
+                            t_row_a = s_edit_rec[s_edit_rec.iloc[:, 5].astype(str) == t_time_a].iloc[0]
+                            
+                            with st.form("edit_att_form"):
+                                st.info("👇 기존 출결 내용이 불러와졌습니다. 수정한 뒤 덮어쓰기를 누르세요.")
+                                e_type_a = st.text_input("출결 항목 (기존 텍스트 변경 가능)", str(t_row_a.values[1]))
+                                e_cont_a = st.text_area("사유", str(t_row_a.values[2]))
+                                e_aut_a = st.text_input("작성자", str(t_row_a.values[4]))
+                                
+                                b1_a, b2_a = st.columns(2)
+                                do_edit_a = b1_a.form_submit_button("✅ 수정한 출결 덮어쓰기")
+                                do_del_a = b2_a.form_submit_button("🚨 이 출결 영구 삭제하기")
+                                
+                                if do_edit_a:
+                                    all_v = record_sheet.get_all_values()
+                                    r_id = -1
+                                    for i, rv in enumerate(all_v):
+                                        if i > 0 and rv[0] == edit_s_name and rv[5] == t_time_a:
+                                            r_id = i + 1
+                                            break
+                                    if r_id != -1:
+                                        record_sheet.update(f"A{r_id}:F{r_id}", [[edit_s_name, e_type_a, e_cont_a, "출결처리", e_aut_a, t_time_a]])
+                                        st.success("✅ 출결 기록이 성공적으로 수정되었습니다!")
+                                        st.rerun()
+                                        
+                                if do_del_a:
+                                    all_v = record_sheet.get_all_values()
+                                    r_id = -1
+                                    for i, rv in enumerate(all_v):
+                                        if i > 0 and rv[0] == edit_s_name and rv[5] == t_time_a:
+                                            r_id = i + 1
+                                            break
+                                    if r_id != -1:
+                                        record_sheet.delete_rows(r_id)
+                                        st.warning("🚨 선택하신 출결 기록이 영구 삭제되었습니다.")
+                                        st.rerun()
+                    else:
+                        st.info("이 학생은 수정하거나 삭제할 출결 기록이 없습니다.")
             else:
                 st.info("해당 학급에 등록된 학생이 없습니다.")
         else:
@@ -247,7 +377,6 @@ try:
                     else:
                         s_rec = pd.DataFrame()
                         
-                    # ★ 수정됨: '결과' 단어도 출결 기록으로 완벽히 인식합니다!
                     is_att = s_rec['분류'].str.contains('결석|조퇴|지각|결과', na=False) if not s_rec.empty else pd.Series(dtype=bool)
                     has_guide = not s_rec[~is_att].empty
                     has_only_att = not s_rec[is_att].empty and not has_guide
@@ -303,12 +432,10 @@ try:
                 stats_df = stats_df.dropna(subset=['변환된일시'])
                 stats_df['월'] = stats_df['변환된일시'].dt.strftime('%Y년 %m월')
                 
-                # ★ 수정됨: '결과' 단어도 출결 통계로 완벽히 분리됩니다!
                 mask_att = stats_df['분류'].str.contains('결석|조퇴|지각|결과', na=False)
                 df_att = stats_df[mask_att].copy()
                 df_guide = stats_df[~mask_att]
                 
-                # --- 차트 영역 ---
                 col_st1, col_st2 = st.columns(2)
                 with col_st1:
                     st.markdown("### 📊 월별 **생활지도** 건수")
@@ -328,7 +455,6 @@ try:
 
                 st.divider()
                 
-                # --- 월별/학급별/학생별 출결 자동 요약(피벗) ---
                 st.subheader("📑 월별 학급/학생 출결 요약 통계 (자동 계산)")
                 
                 if not df_att.empty and not students_df.empty:
