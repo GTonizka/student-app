@@ -94,13 +94,21 @@ try:
                 else:
                     c_o1 = c_o2 = c_o3 = c_sm = c_ri = 0
 
-                st.subheader("📌 학생 지도 현황")
+                st.subheader("📌 학생 지도 현황 요약")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 c1.metric("외출(공식)", c_o1)
                 c2.metric("외출(포상)", c_o2)
                 c3.metric("무단 외출", c_o3)
                 c4.metric("흡연(교내/외)", c_sm)
                 c5.metric("🚨 교권 침해", c_ri)
+
+                # --- ★ 추가된 기능: 학생 전체 기록(표) 한눈에 보기 ---
+                st.markdown("**📜 누적 전체 기록 (지도 및 출결)**")
+                if not st_records.empty:
+                    df_show_all = st_records.drop(columns=['이름'], errors='ignore')
+                    st.dataframe(df_show_all.sort_values('작성일시', ascending=False), use_container_width=True, hide_index=True)
+                else:
+                    st.info("이 학생에 대한 과거 기록이 없습니다.")
 
                 st.divider()
                 st.subheader("📝 신규 지도 내용 작성")
@@ -135,12 +143,10 @@ try:
                             st.success("지도 데이터가 안전하게 저장되었습니다.")
                             st.rerun()
 
-                # --- 탭 1: 생활지도 기록 전용 수정/삭제 ---
                 st.divider()
                 st.subheader("🛠️ 기존 생활지도 기록 수정 및 삭제")
                 
                 if not st_records.empty:
-                    # 출결 기록은 빼고, 순수 생활지도 기록만 필터링합니다.
                     mask_att_edit = st_records['분류'].str.contains('결석|조퇴|지각|결과', na=False)
                     st_records_guide = st_records[~mask_att_edit]
                     
@@ -271,12 +277,11 @@ try:
                                 record_sheet.append_row([s_name, a_type, a_content, "출결처리", global_aut, sel_dt_a])
                                 st.success(f"✅ {s_name} ({a_type}) 저장 완료!")
                                 
-                # --- ★ 추가된 기능: 출결 전용 수정 및 삭제 ---
                 st.divider()
-                st.subheader("🛠️ 학급 기존 출결 기록 수정 및 삭제")
+                st.subheader("🛠️ 학급 기존 출결 기록 조회 및 수정")
                 
                 edit_stu_list = [f"{row['번호']}번 {row['이름']}" for idx, row in a_df.iterrows()]
-                sel_edit_stu_str = st.selectbox("수정/삭제할 출결 기록의 학생을 선택하세요", ["(학생 선택)"] + edit_stu_list, key="edit_stu_sel")
+                sel_edit_stu_str = st.selectbox("기록을 조회하거나 수정할 학생을 선택하세요", ["(학생 선택)"] + edit_stu_list, key="edit_stu_sel")
                 
                 if sel_edit_stu_str != "(학생 선택)":
                     edit_s_name = sel_edit_stu_str.split(" ", 1)[1]
@@ -286,7 +291,12 @@ try:
                     else:
                         s_edit_rec = pd.DataFrame()
                         
+                    # --- ★ 추가된 기능: 선택한 학생의 과거 출결 기록(표) 띄워주기 ---
+                    st.markdown(f"**📜 [{edit_s_name}] 학생 누적 출결 기록**")
                     if not s_edit_rec.empty:
+                        df_show_att = s_edit_rec.drop(columns=['이름'], errors='ignore')
+                        st.dataframe(df_show_att.sort_values('작성일시', ascending=False), use_container_width=True, hide_index=True)
+                        
                         rec_opts_a = []
                         for _, r in s_edit_rec.iterrows():
                             v_time = str(r.values[5])
@@ -335,7 +345,7 @@ try:
                                         st.warning("🚨 선택하신 출결 기록이 영구 삭제되었습니다.")
                                         st.rerun()
                     else:
-                        st.info("이 학생은 수정하거나 삭제할 출결 기록이 없습니다.")
+                        st.info("이 학생은 과거 출결 기록이 없습니다.")
             else:
                 st.info("해당 학급에 등록된 학생이 없습니다.")
         else:
@@ -404,7 +414,7 @@ try:
                 st.info("해당 학급에 등록된 학생이 없습니다.")
 
     # ==========================================
-    # --- 탭 4: 분리형 통계 및 다운로드 (자동 피벗 추가) ---
+    # --- 탭 4: 분리형 통계 및 다운로드 ---
     # ==========================================
     with tab3:
         st.header("📈 학교 전체 통계 및 다운로드")
